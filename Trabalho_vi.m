@@ -29,6 +29,13 @@ classdef Trabalho_vi < matlab.apps.AppBase
          imgOriginal;
     end
     
+    methods (Access = private)
+        
+        function startupFcn(app)
+            app.UIFigure.AutoResizeChildren = 'on';
+        end
+    end
+    
 
     % Callbacks that handle component events
     methods (Access = private)
@@ -143,7 +150,7 @@ classdef Trabalho_vi < matlab.apps.AppBase
                  case "Threshold"
                      app.EditField.Visible = "on"; 
                      app.EditFieldLabel.Visible = "on";
-                     app.EditFieldLabel.Text = "Valor do Limar";
+                     app.EditFieldLabel.Text = "Valor do Limiar";
                      app.EditField2.Visible = "off";
                      app.EditField2Label.Visible = "off";
                      app.SelecioneumaOpoButtonGroup.Visible = "off";
@@ -227,8 +234,8 @@ classdef Trabalho_vi < matlab.apps.AppBase
                      app.Opt4Button.Text = "Equalizado Adaptativo";
 
                  case "Contagem Simples"
-                     app.EditField.Visible = "on"; 
-                     app.EditFieldLabel.Visible = "on";
+                     app.EditField.Visible = "off"; 
+                     app.EditFieldLabel.Visible = "off";
                      app.EditFieldLabel.Text = "Valor do Limar";
                      app.EditField2.Visible = "off";
                      app.EditField2Label.Visible = "off";
@@ -269,7 +276,7 @@ classdef Trabalho_vi < matlab.apps.AppBase
                         end
 
                     case "Threshold"
-                        if valor > 0
+                        if valor >= 0 && valor <= 1
                             try
                                 % Converter para escala de cinza se necessário
                                 if size(img, 3) == 3
@@ -286,6 +293,7 @@ classdef Trabalho_vi < matlab.apps.AppBase
                                 % Salvar a imagem binarizada
                                 imwrite(imgBi, nomeCaminho);
                                 app.Image2.ImageSource = nomeCaminho; % Atualiza a exibição da imagem no app
+                            
 
                            catch ME
                                disp('Erro ao aplicar filtro:');
@@ -294,17 +302,35 @@ classdef Trabalho_vi < matlab.apps.AppBase
                         end
 
                     case "Passa-Alta"
-                        % Converter para escala de cinza se necessário
-                        if size(img, 3) == 3
-                            img = rgb2gray(img);
-                        end
+    
                         selecaoOpt = app.SelecioneumaOpoButtonGroup.SelectedObject;
                         switch selecaoOpt
                             case app.Opt1Button % Passa Alta - Basica
                                 try
-                                    kernelPA = [-1, -1, -1; -1, app.EditField.Value, -1; -1, -1, -1];
-                                    PA_basica = imfilter(img, kernelPA, 'replicate');
-                                    
+                                   % Verifica se a imagem é colorida ou em tons de cinza
+                                    if size(img, 3) == 3  % Imagem colorida (RGB)
+                                        % Separar os três canais (R, G, B)
+                                        img = imread(app.imgOriginal);
+                                        imgR = img(:,:,1); % Canal vermelho
+                                        imgG = img(:,:,2); % Canal verde
+                                        imgB = img(:,:,3); % Canal azul
+                    
+                                        % Aplicar o filtro passa-alta em cada canal de cor
+                                        kernelPA = [-1, -1, -1; -1, app.EditField.Value, -1; -1, -1, -1];
+                                        PA_basica_R = imfilter(imgR, kernelPA, 'replicate');
+                                        PA_basica_G = imfilter(imgG, kernelPA, 'replicate');
+                                        PA_basica_B = imfilter(imgB, kernelPA, 'replicate');
+                    
+                                        % Recombinar os canais de volta em uma imagem RGB
+                                        PA_basica = cat(3, PA_basica_R, PA_basica_G, PA_basica_B); 
+                                    else
+                                        % Imagem em preto e branco (tons de cinza)
+                                        % Aplicar o filtro passa-alta na imagem de tons de cinza
+                                        img = imread(app.imgOriginal);
+                                        kernelPA = [-1, -1, -1; -1, app.EditField.Value, -1; -1, -1, -1];
+                                        PA_basica = imfilter(img, kernelPA, 'replicate');
+                                    end
+
                                     % Gerar um timestamp para garantir nomes de arquivos únicos
                                     timestamp = datestr(now, 'yyyymmdd_HHMMSS');
                                     nomeArq = "Passa_Alta_Basica" + timestamp + "_" + app.nomeImagem + ".png"; % Nome do arquivo inclui timestamp
@@ -319,17 +345,46 @@ classdef Trabalho_vi < matlab.apps.AppBase
                                     disp(ME.message);
                                 end
                             case app.Opt2Button % Passa Alta - Alto Reforço
-                                if valor > 1
+                                if valor >= 1
                                     try
+                                        % Verifica se a imagem é colorida ou em tons de cinza
                                         img = imread(app.imgOriginal);
-                                        h = fspecial('gaussian', [5, 5], 2);
-                                        imgSuavizada = imfilter(img, h, 'replicate');
-                                        % Calcular o filtro passa-alta
-                                        imgPassaAlta = img - imgSuavizada;
+                                        if size(img, 3) == 3  % Imagem colorida (RGB)
+                                            % Separar os três canais (R, G, B) 
+                                            imgR = img(:,:,1); % Canal vermelho
+                                            imgG = img(:,:,2); % Canal verde
+                                            imgB = img(:,:,3); % Canal azul
+                    
+                                            % Suavização em cada canal (para cálculo do passa-alta)
+                                            h = fspecial('gaussian', [5, 5], 2);
+                                            imgSuavizadaR = imfilter(imgR, h, 'replicate');
+                                            imgSuavizadaG = imfilter(imgG, h, 'replicate');
+                                            imgSuavizadaB = imfilter(imgB, h, 'replicate');
+                    
+                                            % Passa-alta em cada canal
+                                            imgPassaAltaR = imgR - imgSuavizadaR;
+                                            imgPassaAltaG = imgG - imgSuavizadaG;
+                                            imgPassaAltaB = imgB - imgSuavizadaB;
+                    
+                                            % Aplicar o filtro de alto reforço em cada canal
+                                            imgAltoReforco_R = valor * imgR + imgPassaAltaR;
+                                            imgAltoReforco_G = valor * imgG + imgPassaAltaG;
+                                            imgAltoReforco_B = valor * imgB + imgPassaAltaB;
+                    
+                                            % Recombinar os canais de volta em uma imagem RGB
+                                            imgAltoReforco = cat(3, imgAltoReforco_R, imgAltoReforco_G, imgAltoReforco_B);
 
-                                        % Aplicar o filtro de alto reforço
-                                        imgAltoReforco = valor * img + imgPassaAlta;
-
+                                        else % Imagem em preto e branco (tons de cinza)
+                                            % Suavização                                       
+                                            h = fspecial('gaussian', [5, 5], 2);
+                                            imgSuavizada = imfilter(img, h, 'replicate');
+                                            % Calcular o filtro passa-alta
+                                            imgPassaAlta = img - imgSuavizada;
+    
+                                            % Aplicar o filtro de alto reforço
+                                            imgAltoReforco = valor * img + imgPassaAlta;
+                                        end
+                                        
                                         % Gerar um timestamp para garantir nomes de arquivos únicos
                                         timestamp = datestr(now, 'yyyymmdd_HHMMSS');
                                         nomeArq = "Passa_Alta_Basica" + timestamp + "_" + app.nomeImagem + ".png"; % Nome do arquivo inclui timestamp
@@ -352,11 +407,27 @@ classdef Trabalho_vi < matlab.apps.AppBase
                             case app.Opt1Button % Passa Baixa Media 
                                 if valor > 0
                                     try
-                                        if size(img, 3) == 3
-                                            img = rgb2gray(img);
-                                        end
-                                        Media = fspecial('average', valor);
-                                        imgSuavisada = imfilter(img, Media, 'replicate');
+                                        if size(img, 3) == 3 % se for colorida
+                                            % Separar os canais de cor (R, G, B)
+                                            imgR = img(:,:,1); % Canal vermelho
+                                            imgG = img(:,:,2); % Canal verde
+                                            imgB = img(:,:,3); % Canal azul
+                    
+                                            % Criar o kernel da média
+                                            Media = fspecial('average', valor);
+                    
+                                            % Aplicar o filtro de média a cada canal separadamente
+                                            imgR_filt = imfilter(imgR, Media, 'replicate');
+                                            imgG_filt = imfilter(imgG, Media, 'replicate');
+                                            imgB_filt = imfilter(imgB, Media, 'replicate');
+                    
+                                            % Recombinar os canais filtrados
+                                            imgSuavisada = cat(3, imgR_filt, imgG_filt, imgB_filt);
+
+                                        else
+                                            Media = fspecial('average', valor);
+                                            imgSuavisada = imfilter(img, Media, 'replicate');
+                                        end 
 
                                         % Gerar um timestamp para garantir nomes de arquivos únicos
                                         timestamp = datestr(now, 'yyyymmdd_HHMMSS');
@@ -375,15 +446,24 @@ classdef Trabalho_vi < matlab.apps.AppBase
                                 try
                                     linha1 = app.EditField.Value;
                                     linha2 = app.EditField2.Value;
-                                    
-                                    if size(img, 3) == 3
-                                       img = rgb2gray(img);
-                                    end
-
                                     tamanhoJanela = [linha1, linha2];
-                                    imgFiltrada = medfilt2(img,tamanhoJanela);
-                                    %faze um if se a imagem eh colorida ou
-                                    %nao
+
+                                    if size(img, 3) == 3 %se a imagem for colorida
+                                       % Separar os canais de cor (R, G, B)
+                                        imgR = img(:,:,1); % Canal vermelho
+                                        imgG = img(:,:,2); % Canal verde
+                                        imgB = img(:,:,3); % Canal azul
+                    
+                                        % Aplicar o filtro de mediana a cada canal separadamente
+                                        imgR_filt = medfilt2(imgR, tamanhoJanela);
+                                        imgG_filt = medfilt2(imgG, tamanhoJanela);
+                                        imgB_filt = medfilt2(imgB, tamanhoJanela);
+                    
+                                        % Recombinar os canais filtrados
+                                        imgFiltrada = cat(3, imgR_filt, imgG_filt, imgB_filt);
+                                    else % se a imagem nao for colorida
+                                        imgFiltrada = medfilt2(img,tamanhoJanela);
+                                    end
                                     % Gerar um timestamp para garantir nomes de arquivos únicos
                                     timestamp = datestr(now, 'yyyymmdd_HHMMSS');
                                     nomeArq = "Passa_Baixa_Mediana" + timestamp + "_" + app.nomeImagem + ".png"; % Nome do arquivo inclui timestamp
@@ -870,41 +950,58 @@ classdef Trabalho_vi < matlab.apps.AppBase
                                 end
                         end
                     case "Contagem Simples"
-                        valor = app.EditField.Value;
                         try
-                            if size(img, 3) == 3
-                               img = rgb2gray(img);
-                            end
-                            imgBin = img > valor;
+                        % Converter para escala de cinza
+                            i = rgb2gray(img);
                             
-                            % Identificar e contar os objetos
-                            [labels, numObjects] = bwlabel(imgBin);
-                            hold on;
-
-                            % Marcar e contar os objetos
-                            for i = 1:numObjects
-                                % Obter as coordenadas dos pixels do objeto
-                                [rows, cols] = find(labels == i);
-                                
-                                % Desenhar um contorno ao redor do objeto
-                                rectangle('Position', [min(cols), min(rows), max(cols)-min(cols), max(rows)-min(rows)], ...
-                                          'EdgeColor', 'r', 'LineWidth', 2);
-                                
-                                % Colocar um número sobre o objeto
-                                text(mean(cols), mean(rows), num2str(i), 'Color', 'yellow', 'FontSize', 12);
-                            end
-                            
+                            % Inversão de intensidade (se necessário, com avaliação do efeito)
+                            limiar = 255 - i;
+                    
+                            % Aplicar binarização (pode ajustar o método ou limiar se necessário)
+                            bw = imbinarize(limiar);
+                    
+                            % Remover pequenos objetos para evitar ruído (ajustar minObjectSize conforme necessário)
+                            minObjectSize = 50;  % Defina o tamanho mínimo de objetos que você deseja contar
+                            bw = bwareaopen(bw, minObjectSize);
+                    
+                            % Preencher buracos (verifique se isso realmente é necessário para sua imagem)
+                            bw2 = imfill(bw, 'holes');
+                    
+                            % Criar uma imagem lógica
+                            L = logical(bw2);
+                    
+                            % Usar 'regionprops' para obter as propriedades das regiões
+                            s = regionprops(L, 'Centroid');
+                            figure, imshow(bw2), title('Objetos contados');
+                    
+                            hold on
+                                % Circular as regiões
+                                boundaries = bwboundaries(L);
+                                for k = 1:length(boundaries)
+                                    boundary = boundaries{k};
+                                    plot(boundary(:,2), boundary(:,1), 'r', 'LineWidth', 2);
+                                end
+                    
+                                % Marcar os centróides das regiões
+                                for k = 1:numel(s)
+                                    c = s(k).Centroid;
+                                    text(c(1), c(2), sprintf('%d', k), ...
+                                        'HorizontalAlignment', 'center', ...
+                                        'VerticalAlignment', 'middle', ...
+                                        'Color', 'black');
+                                end
+                    
+                                % Contar o número total de objetos
+                                numObjects = numel(s);
+                    
+                                % Exibir o valor total da contagem na imagem
+                                text(size(bw2, 2) - 10, 10, sprintf('Total: %d', numObjects), ...
+                                    'HorizontalAlignment', 'right', ...
+                                    'VerticalAlignment', 'top', ...
+                                    'Color', 'green', ...
+                                    'FontSize', 12, ...
+                                    'FontWeight', 'bold');
                             hold off;
-                            title(['Número de objetos: ', num2str(numObjects)]);
-
-                            % Gerar um timestamp para garantir nomes de arquivos únicos
-                            timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-                            nomeArq = "ContagemSimples_" + timestamp + "_" + app.nomeImagem + ".png"; % Nome do arquivo inclui timestamp
-                            nomeCaminho = fullfile(app.caminhoArq, nomeArq); % Caminho da imagem
-                            
-                            % Salvar a imagem 
-                            imwrite(imgBin, nomeCaminho);
-                            app.Image2.ImageSource = nomeCaminho; % Atualiza a exibição da imagem no app
 
                         catch ME
                             disp('Erro ao aplicar filtro:'); 
@@ -1009,7 +1106,7 @@ classdef Trabalho_vi < matlab.apps.AppBase
             app.Opt4Button.FontSize = 14;
             app.Opt4Button.FontWeight = 'bold';
             app.Opt4Button.FontColor = [0.0118 0.0157 0.0196];
-            app.Opt4Button.Position = [12 27 165 22];
+            app.Opt4Button.Position = [12 27 230 22];
 
             % Create EditFieldLabel
             app.EditFieldLabel = uilabel(app.UIFigure);
@@ -1043,7 +1140,7 @@ classdef Trabalho_vi < matlab.apps.AppBase
             app.EditField2Label.FontWeight = 'bold';
             app.EditField2Label.FontColor = [0.0118 0.0157 0.0196];
             app.EditField2Label.Visible = 'off';
-            app.EditField2Label.Position = [687 461 116 22];
+            app.EditField2Label.Position = [687 461 147 22];
             app.EditField2Label.Text = 'Edit Field2';
 
             % Create EditField2
